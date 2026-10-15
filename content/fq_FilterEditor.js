@@ -66,8 +66,8 @@
       "filtaquilla@mesquilla.com.esr115#rspSmart" : "filtaquilla-ruleactiontarget-templatepicker",
       // ToneQuilla
       "tonequilla@mesquilla.com#playSound": "filtaquilla-ruleactiontarget-tonequillapicker",
-      // Update IMAP Server Layout Hook
-      "filtaquilla@mesquilla.com.esr115#updateImapServer": "hbox",
+      // Update IMAP Server Layout Hook (Point to a value-holding input layout wrapper)
+      "filtaquilla@mesquilla.com.esr115#updateImapServer": "ruleactiontarget-forwardto",
     };
     const elementName = elementMapping[type];
     return elementName ? document.createXULElement(elementName) : null;
@@ -76,24 +76,42 @@
   function patchRuleactiontargetWrapper() {
     let wrapper = customElements.get("ruleactiontarget-wrapper");
     if (wrapper) {
+      // 1. DUPLICATION GUARD: Check if the custom wrapper has already processed the layout style parameters once
+      if (wrapper.prototype.hasOwnProperty("_patchedByUpdateImapServerStyle")) {
+        return;
+      }
+
       let alreadyPatched = wrapper.prototype.hasOwnProperty("_patchedByFiltaQuillaExtension") ?
                            wrapper.prototype._patchedByFiltaQuillaExtension :
                            false;
-      if (alreadyPatched) {
-        // already patched
-        return;
+      if (!alreadyPatched) {
+        let prevMethod = wrapper.prototype._getChildNode;
+        if (prevMethod) {
+          wrapper.prototype._getChildNode = function(type) {
+            let element = getChildNode(type);
+            return element ? element : prevMethod(type);
+          };
+          wrapper.prototype._patchedByFiltaQuillaExtension = true;
+        }
       }
-      let prevMethod = wrapper.prototype._getChildNode;
-      if (prevMethod) {
-        wrapper.prototype._getChildNode = function(type) {
-          let element = getChildNode(type);
-          return element ? element : prevMethod(type);
-        };
-        wrapper.prototype._patchedByFiltaQuillaExtension = true;
-      }
+
+      // 2. INJECT THE HIDDEN FIELDS STYLESHEET PATCH
+      let styleElement = document.createElement("style");
+      styleElement.id = "fq-update-imap-server-style-patch";
+      styleElement.textContent = `
+        ruleactiontarget-wrapper[type="filtaquilla@mesquilla.com.esr115#updateImapServer"] ruleactiontarget-forwardto {
+          visibility: collapse !important;
+          display: none !important;
+        }
+      `;
+      document.documentElement.appendChild(styleElement);
+      
+      // Set the protection tracking flag onto the component prototype
+      wrapper.prototype._patchedByUpdateImapServerStyle = true;
     }
   }
 
+  // Execute the guarded function initialization pass safely
   patchRuleactiontargetWrapper();
   
 
@@ -1218,3 +1236,5 @@
 
 
 // vim: set expandtab tabstop=2 shiftwidth=2:
+
+

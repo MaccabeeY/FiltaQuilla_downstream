@@ -2002,15 +2002,143 @@
     };
 
 
-    // Update IMAP Server action hook
+    // Update IMAP Server action implementation
     self.updateImapServer =
     {
       id: "filtaquilla@mesquilla.com.esr115#updateImapServer",
       name: util.getBundleString("fq.updateImapServer"),
 
       applyAction: function(aMsgHdrs, aActionValue, aListener, aType, aMsgWindow) {
-        // Placeholder for Phase 2 implementation
-        Services.console.logStringMessage("[Update IMAP Server] Action placeholder executed.");
+        if (!aMsgHdrs || aMsgHdrs.length === 0) return;
+
+        const mimeConvert = Cc["@mozilla.org/messenger/mimeconverter;1"].getService(Ci.nsIMimeConverter);
+
+        for (let msgHdr of aMsgHdrs) {
+          try {
+            let folder = msgHdr.folder;
+            
+            // Skip processing if the message is already living locally
+            if (!folder.URI.startsWith("imap://")) {
+              util.logDebug("[Update IMAP Server Skip] Message is already in a local folder context: " + folder.name);
+              continue;
+            }
+
+            // 1. Establish file paths using Thunderbird's native OS file picker profiles
+            let tempDir = Services.dirsvc.get("TmpD", Ci.nsIFile);
+            let uniqueFile = tempDir.clone();
+            let uniqueIdMap = crypto.randomUUID();
+            uniqueFile.append(uniqueIdMap + ".eml");
+
+            // 2. Stream the message data from the disk directly to a temporary file
+            let msgSpec = folder.getUriForMsg(msgHdr);
+            let service = MailServices.messageServiceFromURI(msgSpec);
+            
+            // We use the same service hook that FiltaQuilla uses to export messages to disk (Line 715)
+            service.saveMessageToDisk(msgSpec, uniqueFile, false, {
+              OnStartRunningUrl: function(aUrl) {},
+              OnStopRunningUrl: async function(aUrl, aStatus) {
+                try {
+                  // 3. Read the downloaded file content out into a processing block
+                  let fileInputStream = Cc["@mozilla.org/network/file-input-stream;1"].createInstance(Ci.nsIFileInputStream);
+                  let scriptableStream = Cc["@mozilla.org/scriptableinputstream;1"].createInstance(Ci.nsIScriptableInputStream);
+                  
+                  fileInputStream.init(uniqueFile, 0x01, 0o444, 0);
+                  scriptableStream.init(fileInputStream);
+                  let rawMsgData = scriptableStream.read(scriptableStream.available());
+                  scriptableStream.close();
+                  fileInputStream.close();
+
+                  // 4. Update the subject header block exactly like the EES architectural layout
+                  let sanitizedRaw = rawMsgData.replace(/\r/g, "").replace(/\n/g, "\r\n");
+                  let headerDelimiterIndex = sanitizedRaw.search(/\r\n\r\n/);
+                  let headerSectionBlock = "\r\n" + sanitizedRaw.substring(0, headerDelimiterIndex + 2).replace(/\r\r/g, "\r");
+                  let bodySectionBlock = sanitizedRaw.substring(headerDelimiterIndex + 2);
+
+                  while (headerSectionBlock.match(/\r\nSubject: .*\r\n\s+/)) {
+                    headerSectionBlock = headerSectionBlock.replace(/(\r\nSubject: .*)(\r\n\s+)/, "$1 ");
+                  }
+
+                  const startToken = " =?utf-8?q?";
+                  const midToken = "=?=";
+                  const endToken = "?=";
+                  let finalHeaderLines = [];
+                  let currentLineBuilder = "Subject:" + startToken;
+
+                  // Grab the locally modified subject value from your running filter action state
+                  let liveUpdatedSubject = mimeConvert.decodeMimeHeader(msgHdr.subject, null, false, true);
+                  let encodedByteData = new TextEncoder().encode(liveUpdatedSubject);
+
+                  for (let byteChar of encodedByteData.values()) {
+                    let symbol = String.fromCharCode(byteChar);
+                    let encodedSymbol = symbol.replace(/[\0-\x1F"-\),\.:-@\[-\^`\{-\uFFFF]/g, function (sym) {
+                      let hexVal = sym.charCodeAt(0).toString(16).toUpperCase();
+                      return '=' + ('0' + hexVal).slice(-2);
+                    }).replace(/\x20/g, '_');
+
+                    if (currentLineBuilder.length + encodedSymbol.length + endToken.length > 78) {
+                      finalHeaderLines.push(currentLineBuilder + midToken);
+                      currentLineBuilder = startToken;
+                    }
+                    currentLineBuilder += encodedSymbol;
+                  }
+                  finalHeaderLines.push(currentLineBuilder + endToken);
+                  let rfc2047SubjectLine = finalHeaderLines.join("\r\n");
+
+                  if (headerSectionBlock.includes("\nSubject: ")) {
+                    headerSectionBlock = headerSectionBlock.replace(/\nSubject: .*\r\n/, "\n" + rfc2047SubjectLine + "\r\n");
+                  } else {
+                    headerSectionBlock += rfc2047SubjectLine + "\r\n";
+                  }
+
+                  // 5. Rewrite the Message-ID field to force a fresh server side append operation
+                  let uniqueUuid = crypto.randomUUID();
+                  let cleanMsgIdString = "<" + uniqueUuid + "@supersubject.addon.local>";
+                  headerSectionBlock = headerSectionBlock.replace(/\nMessage-ID:[\s\S]*?\r\n/i, "\r\nMessage-ID: " + cleanMsgIdString + "\r\n");
+                  headerSectionBlock = headerSectionBlock.substring(2);
+
+                  // 6. Save the newly compiled content array payload back onto the disk
+                  let modernAssembledPayload = headerSectionBlock + bodySectionBlock;
+                  let fileOutputStream = Cc["@mozilla.org/network/file-output-stream;1"].createInstance(Ci.nsIFileOutputStream);
+                  
+                  fileOutputStream.init(uniqueFile, 0x02 | 0x08 | 0x20, 0o666, 0); // write, create, truncate
+                  fileOutputStream.write(modernAssembledPayload, modernAssembledPayload.length);
+                  fileOutputStream.close();
+
+                  // 7. Inject the updated file right into your remote IMAP server folder channel via the copy service
+                  let imapFolder = folder.QueryInterface(Ci.nsIMsgImapMailFolder);
+                  MailServices.copy.copyFileMessage(uniqueFile, imapFolder, msgHdr, false, msgHdr.flags, msgHdr.getStringProperty("keywords"), {
+                    OnStartRunningUrl: function(aUrl) {},
+                    OnStopRunningUrl: function(aUrl, aStatus) {
+                      try {
+                        // 8. Sequential Cleanup: Remove the temporary file from the scratch folder path safely
+                        try { uniqueFile.remove(false); } catch(e) {}
+
+                        // 9. Hard Deletion Pass: Forcefully slice the original message out of the database tree permanently
+                        let originalMsgArray = Cc["@mozilla.org/array;1"].createInstance(Ci.nsIMutableArray);
+                        originalMsgArray.appendElement(msgHdr);
+                        folder.deleteMessages(originalMsgArray, null, false, true);
+                        
+                        // 10. Explicitly tell the server's wire channel to physically flush the deleted message instantly
+                        imapFolder.expunge(null, null);
+
+                        Services.console.logStringMessage("[Update IMAP Server Success] Clean append and remote purge cycles finished completely.");
+                      } catch (innerCallbackError) {
+                        Services.console.logStringMessage("[Update IMAP Server Callback Failure] " + innerCallbackError);
+                      }
+                    }
+                  }, null);
+
+                  Services.console.logStringMessage("[Update IMAP Server] Independent copy streamed to the server wire. Purge listener armed.");
+                } catch (innerError) {
+                  Services.console.logStringMessage("[Update IMAP Server Stream Crash] File parse failure: " + innerError);
+                }
+              }
+            }, true, null);
+
+          } catch (error) {
+            Services.console.logStringMessage("[Update IMAP Server Crash] Failed executing server write pass: " + error);
+          }
+        }
       },
       
       apply: function(aMsgHdrs, aActionValue, aListener, aType, aMsgWindow) {

@@ -26,7 +26,13 @@
   "permissions": [
     "messagesRead",
     "notifications",
-    "tabs"
+    "tabs",
+    "storage",
+    "messagesMove",
+    "messagesImport",
+    "accountsRead",
+    "accountsFolders",
+    "messagesDelete"
   ],  
   "experiment_apis": {
     "WindowListener": {
