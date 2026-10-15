@@ -289,6 +289,9 @@
   "fq.trainJunk.access": {
     "message": "J"
   },
+    "fq.updateImapServer": {
+    "message": "Update IMAP Server"
+  },
   "helpFeatureTip": {
     "message": "Show Details on this feature"
   },

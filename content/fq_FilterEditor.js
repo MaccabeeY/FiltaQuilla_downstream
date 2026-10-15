@@ -66,6 +66,8 @@
       "filtaquilla@mesquilla.com.esr115#rspSmart" : "filtaquilla-ruleactiontarget-templatepicker",
       // ToneQuilla
       "tonequilla@mesquilla.com#playSound": "filtaquilla-ruleactiontarget-tonequillapicker",
+      // Update IMAP Server Layout Hook
+      "filtaquilla@mesquilla.com.esr115#updateImapServer": "hbox",
     };
     const elementName = elementMapping[type];
     return elementName ? document.createXULElement(elementName) : null;

@@ -122,6 +122,7 @@
       archiveMessageEnabled = false,
       fwdSmartTemplatesEnabled = false,
       rspSmartTemplatesEnabled = false,
+      updateImapServerEnabled = false,
       fileNamesSpaceCharacter = " ";
       
       
@@ -1999,7 +2000,34 @@
 
         allowDuplicates: true
     };
-    
+
+
+    // Update IMAP Server action hook
+    self.updateImapServer =
+    {
+      id: "filtaquilla@mesquilla.com.esr115#updateImapServer",
+      name: util.getBundleString("fq.updateImapServer"),
+
+      applyAction: function(aMsgHdrs, aActionValue, aListener, aType, aMsgWindow) {
+        // Placeholder for Phase 2 implementation
+        Services.console.logStringMessage("[Update IMAP Server] Action placeholder executed.");
+      },
+      
+      apply: function(aMsgHdrs, aActionValue, aListener, aType, aMsgWindow) {
+        let msgHdrs = [];
+        for (var i = 0; i < aMsgHdrs.length; i++) {
+          msgHdrs.push(aMsgHdrs.queryElementAt(i, Ci.nsIMsgDBHdr));
+        }
+        this.applyAction(msgHdrs, aActionValue, aListener, aType, aMsgWindow);
+      },
+
+      isValidForType: function(type, scope) { return updateImapServerEnabled; },
+      validateActionValue: function(value, folder, type) { return null; },
+      allowDuplicates: false,
+      needsBody: false,
+      isAsync: false
+    };
+
 
  };
  
@@ -2116,6 +2144,10 @@
     try {
       rspSmartTemplatesEnabled = prefs.getBoolPref("smarttemplates.rsp.enabled");
     } catch (e) {}
+
+    try {
+      updateImapServerEnabled = prefs.getBoolPref("updateImapServer.enabled");
+    } catch (e) {}
     
     // 2. Enable conditions
     try {
@@ -2200,6 +2232,7 @@
     filterService.addCustomAction(self.playSound);
     filterService.addCustomAction(self.archiveMessage);
     filterService.addCustomAction(self.trainAsJunk);
+    filterService.addCustomAction(self.updateImapServer);
 
 
     // search terms 

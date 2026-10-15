@@ -35,6 +35,7 @@ pref("extensions.filtaquilla.regexpCaseInsensitive.enabled", true);
 pref("extensions.filtaquilla.archiveMessage.enabled", false);
 pref("extensions.filtaquilla.smarttemplates.fwd.enabled", false);
 pref("extensions.filtaquilla.smarttemplates.rsp.enabled", false);
+pref("extensions.filtaquilla.updateImapServer.enabled", true);
 
 // search terms
 pref("extensions.filtaquilla.SubjectRegexEnabled", true);
