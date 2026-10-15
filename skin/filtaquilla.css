@@ -1,12 +1,12 @@
 
-.ruleactiontarget[type="filtaquilla@mesquilla.com#launchFile"],
-.ruleactiontarget[type="filtaquilla@mesquilla.com#runFile"],
-.ruleactiontarget[type="filtaquilla@mesquilla.com#addSender"],
-.ruleactiontarget[type="filtaquilla@mesquilla.com#saveAttachment"] ,
-.ruleactiontarget[type="filtaquilla@mesquilla.com#detachAttachments"] ,
-.ruleactiontarget[type="filtaquilla@mesquilla.com#javascriptAction"] ,
-.ruleactiontarget[type="filtaquilla@mesquilla.com#javascriptActionBody"] ,
-.ruleactiontarget[type="filtaquilla@mesquilla.com#saveMessageAsFile"] {
+.ruleactiontarget[type="filtaquilla@mesquilla.com.esr115#launchFile"],
+.ruleactiontarget[type="filtaquilla@mesquilla.com.esr115#runFile"],
+.ruleactiontarget[type="filtaquilla@mesquilla.com.esr115#addSender"],
+.ruleactiontarget[type="filtaquilla@mesquilla.com.esr115#saveAttachment"] ,
+.ruleactiontarget[type="filtaquilla@mesquilla.com.esr115#detachAttachments"] ,
+.ruleactiontarget[type="filtaquilla@mesquilla.com.esr115#javascriptAction"] ,
+.ruleactiontarget[type="filtaquilla@mesquilla.com.esr115#javascriptActionBody"] ,
+.ruleactiontarget[type="filtaquilla@mesquilla.com.esr115#saveMessageAsFile"] {
   flex-grow: 2;
   /* -moz-box-flex: 1;  */
 }
@@ -60,13 +60,13 @@ menulist.flexinput {
 }
 
 /* textboxes */
-.search-value-custom[searchAttribute="filtaquilla@mesquilla.com#attachmentRegex"],
-.search-value-custom[searchAttribute="filtaquilla@mesquilla.com#headerRegex"],
-.search-value-custom[searchAttribute="filtaquilla@mesquilla.com#searchBcc"],
-.search-value-custom[searchAttribute="filtaquilla@mesquilla.com#folderName"],
-.search-value-custom[searchAttribute="filtaquilla@mesquilla.com#subjectRegex"],
-.search-value-custom[searchAttribute="filtaquilla@mesquilla.com#threadheadtag"],
-.search-value-custom[searchAttribute="filtaquilla@mesquilla.com#threadanytag"] {
+.search-value-custom[searchAttribute="filtaquilla@mesquilla.com.esr115#attachmentRegex"],
+.search-value-custom[searchAttribute="filtaquilla@mesquilla.com.esr115#headerRegex"],
+.search-value-custom[searchAttribute="filtaquilla@mesquilla.com.esr115#searchBcc"],
+.search-value-custom[searchAttribute="filtaquilla@mesquilla.com.esr115#folderName"],
+.search-value-custom[searchAttribute="filtaquilla@mesquilla.com.esr115#subjectRegex"],
+.search-value-custom[searchAttribute="filtaquilla@mesquilla.com.esr115#threadheadtag"],
+.search-value-custom[searchAttribute="filtaquilla@mesquilla.com.esr115#threadanytag"] {
   /* -moz-box-flex: 1; */
   flex-grow: 2;
 }

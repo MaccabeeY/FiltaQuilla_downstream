@@ -43,7 +43,7 @@ FiltaQuilla.Util = {
   mAppver: null,
   HARDCODED_CURRENTVERSION: "4.0", // will later be overriden call to AddonManager
   HARDCODED_EXTENSION_TOKEN: ".hc",
-  ADDON_ID: "filtaquilla@mesquilla.com",
+  ADDON_ID: "filtaquilla@mesquilla.com.esr115",
   _prefs: null,
   _consoleService: null,
   _stringBundleSvc: null,
@@ -392,7 +392,7 @@ FiltaQuilla.Util = {
   // l10n
   getBundleString: function getBundleString(id, defaultText, substitions = []) {
     var { ExtensionParent } = ChromeUtils.import("resource://gre/modules/ExtensionParent.jsm");
-    let extension = ExtensionParent.GlobalManager.getExtension("filtaquilla@mesquilla.com");
+    let extension = ExtensionParent.GlobalManager.getExtension("filtaquilla@mesquilla.com.esr115");
     let localized = extension.localeData.localizeMessage(id, substitions);
 
     let s = "";
@@ -440,7 +440,7 @@ FiltaQuilla.Util = {
     var Services =
       globalThis.Services || ChromeUtils.import("resource://gre/modules/Services.jsm").Services;
     var { ExtensionParent } = ChromeUtils.import("resource://gre/modules/ExtensionParent.jsm");
-    let extension = ExtensionParent.GlobalManager.getExtension("filtaquilla@mesquilla.com");
+    let extension = ExtensionParent.GlobalManager.getExtension("filtaquilla@mesquilla.com.esr115");
     Services.scriptloader.loadSubScript(
       extension.rootURI.resolve("content/i18n.js"),
       window,
@@ -1270,7 +1270,7 @@ var Services = globalThis.Services || ChromeUtils.import(
 ).Services;
 var { ExtensionParent } = ChromeUtils.import("resource://gre/modules/ExtensionParent.jsm");
 var { MimeParser } = ChromeUtils.import("resource:///modules/mimeParser.jsm");
-FiltaQuilla.Util.extension = ExtensionParent.GlobalManager.getExtension("filtaquilla@mesquilla.com");
+FiltaQuilla.Util.extension = ExtensionParent.GlobalManager.getExtension("filtaquilla@mesquilla.com.esr115");
 Services.scriptloader.loadSubScript(
   FiltaQuilla.Util.extension.rootURI.resolve("content/scripts/notifyTools.js"),
   FiltaQuilla.Util,
