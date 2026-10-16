@@ -122,7 +122,7 @@
       archiveMessageEnabled = false,
       fwdSmartTemplatesEnabled = false,
       rspSmartTemplatesEnabled = false,
-      updateImapServerEnabled = true,
+      updateImapServerEnabled = false,
       fileNamesSpaceCharacter = " ";
       
       
@@ -379,7 +379,7 @@
         this.applyAction(msgHdrs, aActionValue, aListener, aType, aMsgWindow);
       },
 
-      isValidForType: function(type, scope) { return true; }, 
+      isValidForType: function(type, scope) { return updateImapServerEnabled; }, 
       validateActionValue: function(value, folder, type) { return null; },
       allowDuplicates: false,
       needsBody: true, 
