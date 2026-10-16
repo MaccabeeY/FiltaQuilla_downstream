@@ -66,6 +66,8 @@
       "filtaquilla@mesquilla.com.esr115#rspSmart" : "filtaquilla-ruleactiontarget-templatepicker",
       // ToneQuilla
       "tonequilla@mesquilla.com#playSound": "filtaquilla-ruleactiontarget-tonequillapicker",
+      // Update IMAP Server Layout Hook
+      "filtaquilla@mesquilla.com.esr115#updateImapServer": "ruleactiontarget-forwardto",
     };
     const elementName = elementMapping[type];
     return elementName ? document.createXULElement(elementName) : null;
@@ -94,6 +96,37 @@
 
   patchRuleactiontargetWrapper();
   
+
+  // --- PREPEND TO SUBJECT (IMAP) TEXT VALUE BINDING ---
+  // Tells Thunderbird's dialog builder how to bind text string parameters to our custom action ID
+  function bindImapPrependTextLayout() {
+    let actionWrapper = customElements.get("ruleactiontarget-forwardto");
+    if (actionWrapper && !actionWrapper.prototype.hasOwnProperty("_patchedByPrependImap")) {
+      let originalConnected = actionWrapper.prototype.connectedCallback;
+      if (originalConnected) {
+        actionWrapper.prototype.connectedCallback = function() {
+          originalConnected.call(this);
+          let rowContainer = this.closest(".ruleaction");
+          if (rowContainer && rowContainer.getAttribute("initialActionIndex")) {
+            let actionIndex = rowContainer.getAttribute("initialActionIndex");
+            if (typeof gFilter !== "undefined" && gFilter.getActionAt) {
+              let filterAction = gFilter.getActionAt(actionIndex);
+              if (filterAction && filterAction.type === "filtaquilla@mesquilla.com.esr115#updateImapServer") {
+                let inputField = this.querySelector("html\\:input, input");
+                if (inputField) {
+                  inputField.value = filterAction.strValue || "";
+                  inputField.removeAttribute("hidden");
+                }
+              }
+            }
+          }
+        };
+        actionWrapper.prototype._patchedByPrependImap = true;
+      }
+    }
+  }
+  bindImapPrependTextLayout();
+
 
   const updateParentNode = (parentNode) => {
     if (parentNode.hasAttribute("initialActionIndex")) {
