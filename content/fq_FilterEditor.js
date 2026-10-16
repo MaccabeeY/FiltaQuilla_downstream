@@ -48,24 +48,26 @@
   function getChildNode(type) {
     const elementMapping = {
        // mappings to thunderbird's ruleactiontarget-* elements
-      "filtaquilla@mesquilla.com#subjectAppend": "ruleactiontarget-forwardto",
-      "filtaquilla@mesquilla.com#subjectSuffix": "ruleactiontarget-forwardto",
-      "filtaquilla@mesquilla.com#removeTag": "ruleactiontarget-tag",
-      "filtaquilla@mesquilla.com#copyAsRead": "ruleactiontarget-folder",
-      "filtaquilla@mesquilla.com#moveLater": "ruleactiontarget-folder",
+      "filtaquilla@mesquilla.com.esr115#subjectAppend": "ruleactiontarget-forwardto",
+      "filtaquilla@mesquilla.com.esr115#subjectSuffix": "ruleactiontarget-forwardto",
+      "filtaquilla@mesquilla.com.esr115#removeTag": "ruleactiontarget-tag",
+      "filtaquilla@mesquilla.com.esr115#copyAsRead": "ruleactiontarget-folder",
+      "filtaquilla@mesquilla.com.esr115#moveLater": "ruleactiontarget-folder",
        // mappings to our ruleactiontarget-* custom elements
-      "filtaquilla@mesquilla.com#launchFile": "filtaquilla-ruleactiontarget-launchpicker",
-      "filtaquilla@mesquilla.com#runFile": "filtaquilla-ruleactiontarget-runpicker",
-      "filtaquilla@mesquilla.com#addSender": "filtaquilla-ruleactiontarget-abpicker",
-      "filtaquilla@mesquilla.com#saveAttachment": "filtaquilla-ruleactiontarget-directorypicker",
-      "filtaquilla@mesquilla.com#detachAttachments": "filtaquilla-ruleactiontarget-directorypicker",
-      "filtaquilla@mesquilla.com#javascriptAction": "filtaquilla-ruleactiontarget-javascriptaction",
-      "filtaquilla@mesquilla.com#javascriptActionBody": "filtaquilla-ruleactiontarget-javascriptaction",
-      "filtaquilla@mesquilla.com#saveMessageAsFile": "filtaquilla-ruleactiontarget-directorypicker",
-      "filtaquilla@mesquilla.com#fwdSmart" : "filtaquilla-ruleactiontarget-templatepicker",
-      "filtaquilla@mesquilla.com#rspSmart" : "filtaquilla-ruleactiontarget-templatepicker",
+      "filtaquilla@mesquilla.com.esr115#launchFile": "filtaquilla-ruleactiontarget-launchpicker",
+      "filtaquilla@mesquilla.com.esr115#runFile": "filtaquilla-ruleactiontarget-runpicker",
+      "filtaquilla@mesquilla.com.esr115#addSender": "filtaquilla-ruleactiontarget-abpicker",
+      "filtaquilla@mesquilla.com.esr115#saveAttachment": "filtaquilla-ruleactiontarget-directorypicker",
+      "filtaquilla@mesquilla.com.esr115#detachAttachments": "filtaquilla-ruleactiontarget-directorypicker",
+      "filtaquilla@mesquilla.com.esr115#javascriptAction": "filtaquilla-ruleactiontarget-javascriptaction",
+      "filtaquilla@mesquilla.com.esr115#javascriptActionBody": "filtaquilla-ruleactiontarget-javascriptaction",
+      "filtaquilla@mesquilla.com.esr115#saveMessageAsFile": "filtaquilla-ruleactiontarget-directorypicker",
+      "filtaquilla@mesquilla.com.esr115#fwdSmart" : "filtaquilla-ruleactiontarget-templatepicker",
+      "filtaquilla@mesquilla.com.esr115#rspSmart" : "filtaquilla-ruleactiontarget-templatepicker",
       // ToneQuilla
       "tonequilla@mesquilla.com#playSound": "filtaquilla-ruleactiontarget-tonequillapicker",
+      // Update IMAP Server Layout Hook
+      "filtaquilla@mesquilla.com.esr115#updateImapServer": "ruleactiontarget-forwardto",
     };
     const elementName = elementMapping[type];
     return elementName ? document.createXULElement(elementName) : null;
@@ -94,6 +96,37 @@
 
   patchRuleactiontargetWrapper();
   
+
+  // --- PREPEND TO SUBJECT (IMAP) TEXT VALUE BINDING ---
+  // Tells Thunderbird's dialog builder how to bind text string parameters to our custom action ID
+  function bindImapPrependTextLayout() {
+    let actionWrapper = customElements.get("ruleactiontarget-forwardto");
+    if (actionWrapper && !actionWrapper.prototype.hasOwnProperty("_patchedByPrependImap")) {
+      let originalConnected = actionWrapper.prototype.connectedCallback;
+      if (originalConnected) {
+        actionWrapper.prototype.connectedCallback = function() {
+          originalConnected.call(this);
+          let rowContainer = this.closest(".ruleaction");
+          if (rowContainer && rowContainer.getAttribute("initialActionIndex")) {
+            let actionIndex = rowContainer.getAttribute("initialActionIndex");
+            if (typeof gFilter !== "undefined" && gFilter.getActionAt) {
+              let filterAction = gFilter.getActionAt(actionIndex);
+              if (filterAction && filterAction.type === "filtaquilla@mesquilla.com.esr115#updateImapServer") {
+                let inputField = this.querySelector("html\\:input, input");
+                if (inputField) {
+                  inputField.value = filterAction.strValue || "";
+                  inputField.removeAttribute("hidden");
+                }
+              }
+            }
+          }
+        };
+        actionWrapper.prototype._patchedByPrependImap = true;
+      }
+    }
+  }
+  bindImapPrependTextLayout();
+
 
   const updateParentNode = (parentNode) => {
     if (parentNode.hasAttribute("initialActionIndex")) {
@@ -1024,23 +1057,23 @@
               util.logDebug("Mutation observer (childList), check for patching: " + es);
               
               switch (attType) {
-                case "filtaquilla@mesquilla.com#subjectRegex": // fall-through
-                case "filtaquilla@mesquilla.com#attachmentRegex": // fall-through
-                case "filtaquilla@mesquilla.com#headerRegex": // fall-through
-                // case "filtaquilla@mesquilla.com#bodyRegex": // fall-through
-                case "filtaquilla@mesquilla.com#searchBcc": // fall-through
-                case "filtaquilla@mesquilla.com#folderName":
+                case "filtaquilla@mesquilla.com.esr115#subjectRegex": // fall-through
+                case "filtaquilla@mesquilla.com.esr115#attachmentRegex": // fall-through
+                case "filtaquilla@mesquilla.com.esr115#headerRegex": // fall-through
+                // case "filtaquilla@mesquilla.com.esr115#bodyRegex": // fall-through
+                case "filtaquilla@mesquilla.com.esr115#searchBcc": // fall-through
+                case "filtaquilla@mesquilla.com.esr115#folderName":
                   isPatched = patchFiltaQuillaTextbox(es);
                   break;
-                case "filtaquilla@mesquilla.com#threadheadtag": // fall-through
-                case "filtaquilla@mesquilla.com#threadanytag":
+                case "filtaquilla@mesquilla.com.esr115#threadheadtag": // fall-through
+                case "filtaquilla@mesquilla.com.esr115#threadanytag":
                   isPatched = patchFiltaQuillaTagSelector(es);
                   break;
-                case "filtaquilla@mesquilla.com#javascript":
+                case "filtaquilla@mesquilla.com.esr115#javascript":
                   isPatched = patchFiltaQuillaJavaScriptCondition(es);
                   break;
-                case "filtaquilla@mesquilla.com#subjectBodyRegex": // fall-through
-                case "filtaquilla@mesquilla.com#bodyRegex":
+                case "filtaquilla@mesquilla.com.esr115#subjectBodyRegex": // fall-through
+                case "filtaquilla@mesquilla.com.esr115#bodyRegex":
                   isPatched = patchFiltaQuillaBodyRegex(es);
                   break;
                 default:
@@ -1067,35 +1100,35 @@
               // console.log(es);
               
               switch (attType) {
-                case "filtaquilla@mesquilla.com#subjectRegex": // fall-through
-                case "filtaquilla@mesquilla.com#attachmentRegex": // fall-through
-                case "filtaquilla@mesquilla.com#headerRegex": // fall-through
-                // case "filtaquilla@mesquilla.com#bodyRegex" :       // fall-through
-                case "filtaquilla@mesquilla.com#searchBcc": // fall-through
-                case "filtaquilla@mesquilla.com#folderName":
+                case "filtaquilla@mesquilla.com.esr115#subjectRegex": // fall-through
+                case "filtaquilla@mesquilla.com.esr115#attachmentRegex": // fall-through
+                case "filtaquilla@mesquilla.com.esr115#headerRegex": // fall-through
+                // case "filtaquilla@mesquilla.com.esr115#bodyRegex" :       // fall-through
+                case "filtaquilla@mesquilla.com.esr115#searchBcc": // fall-through
+                case "filtaquilla@mesquilla.com.esr115#folderName":
                   if (es.firstChild) {
                     if (es.firstChild.classList.contains("fq-textbox")) return;
                     es.removeChild(es.firstChild);
                   }
                   isPatched = patchFiltaQuillaTextbox(es);
                   break;
-                case "filtaquilla@mesquilla.com#threadheadtag": // fall-through
-                case "filtaquilla@mesquilla.com#threadanytag":
+                case "filtaquilla@mesquilla.com.esr115#threadheadtag": // fall-through
+                case "filtaquilla@mesquilla.com.esr115#threadanytag":
                   if (es.firstChild) {
                     if (es.firstChild.classList.contains("fq-tag")) return;
                     es.removeChild(es.firstChild);
                   }
                   isPatched = patchFiltaQuillaTagSelector(es);
                   break;
-                case "filtaquilla@mesquilla.com#javascript":
+                case "filtaquilla@mesquilla.com.esr115#javascript":
                   if (es.firstChild) {
                     if (es.firstChild.classList.contains("fq-javascript")) return;
                     es.removeChild(es.firstChild);
                   }
                   isPatched = patchFiltaQuillaJavaScriptCondition(es);
                   break;
-                case "filtaquilla@mesquilla.com#subjectBodyRegex": // fall-through
-                case "filtaquilla@mesquilla.com#bodyRegex":
+                case "filtaquilla@mesquilla.com.esr115#subjectBodyRegex": // fall-through
+                case "filtaquilla@mesquilla.com.esr115#bodyRegex":
                   if (es.firstChild) {
                     if (es.firstChild.classList.contains("fq-regexbody")) return;
                     es.removeChild(es.firstChild);
@@ -1151,18 +1184,18 @@
             foundEL = null; // does this already exist?
         ce.forEach( (el) => {
           // find out whether type still matches.
-          if (["filtaquilla@mesquilla.com#threadheadtag","filtaquilla@mesquilla.com#threadanytag"].includes(attType)) {
+          if (["filtaquilla@mesquilla.com.esr115#threadheadtag","filtaquilla@mesquilla.com.esr115#threadanytag"].includes(attType)) {
             // it is a tag, but is it?
             if (el.firstChild.classList.contains("fq-tag"))
               foundEL = el; // reuse!
           }
-          else if (["filtaquilla@mesquilla.com#subjectRegex",
-               "filtaquilla@mesquilla.com#attachmentRegex",
-               "filtaquilla@mesquilla.com#headerRegex",
-               "filtaquilla@mesquilla.com#bodyRegex",
-               "filtaquilla@mesquilla.com#subjectBodyRegex",
-               "filtaquilla@mesquilla.com#searchBcc",
-               "filtaquilla@mesquilla.com#folderName"].includes(attType)) {
+          else if (["filtaquilla@mesquilla.com.esr115#subjectRegex",
+               "filtaquilla@mesquilla.com.esr115#attachmentRegex",
+               "filtaquilla@mesquilla.com.esr115#headerRegex",
+               "filtaquilla@mesquilla.com.esr115#bodyRegex",
+               "filtaquilla@mesquilla.com.esr115#subjectBodyRegex",
+               "filtaquilla@mesquilla.com.esr115#searchBcc",
+               "filtaquilla@mesquilla.com.esr115#folderName"].includes(attType)) {
             if (el.firstChild.classList.contains("fq-textbox"))
               foundEL = el; // reuse!
           }
@@ -1184,19 +1217,19 @@
       }        
         
       switch(attType) {
-        case "filtaquilla@mesquilla.com#subjectRegex":     // fall-through
-        case "filtaquilla@mesquilla.com#attachmentRegex":  // fall-through
-        case "filtaquilla@mesquilla.com#headerRegex":      // fall-through
-        case "filtaquilla@mesquilla.com#bodyRegex":        // fall-through
-        case "filtaquilla@mesquilla.com#searchBcc":        // fall-through
-        case "filtaquilla@mesquilla.com#folderName":      
+        case "filtaquilla@mesquilla.com.esr115#subjectRegex":     // fall-through
+        case "filtaquilla@mesquilla.com.esr115#attachmentRegex":  // fall-through
+        case "filtaquilla@mesquilla.com.esr115#headerRegex":      // fall-through
+        case "filtaquilla@mesquilla.com.esr115#bodyRegex":        // fall-through
+        case "filtaquilla@mesquilla.com.esr115#searchBcc":        // fall-through
+        case "filtaquilla@mesquilla.com.esr115#folderName":      
           isPatched = patchFiltaQuillaTextbox(searchValueItem);
           break;
-        case "filtaquilla@mesquilla.com#threadheadtag":  // fall-through
-        case "filtaquilla@mesquilla.com#threadanytag":
+        case "filtaquilla@mesquilla.com.esr115#threadheadtag":  // fall-through
+        case "filtaquilla@mesquilla.com.esr115#threadanytag":
           isPatched = patchFiltaQuillaTagSelector(searchValueItem);
           break;
-        case "filtaquilla@mesquilla.com#javascript":
+        case "filtaquilla@mesquilla.com.esr115#javascript":
           isPatched = patchFiltaQuillaJavaScriptCondition(searchValueItem);
           break;
         default:

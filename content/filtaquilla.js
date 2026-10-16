@@ -122,6 +122,7 @@
       archiveMessageEnabled = false,
       fwdSmartTemplatesEnabled = false,
       rspSmartTemplatesEnabled = false,
+      updateImapServerEnabled = false,
       fileNamesSpaceCharacter = " ";
       
       
@@ -171,7 +172,7 @@
     // prepend to subject. This was called "append" due to an earlier bug
     self.subjectAppend =
     {
-      id: "filtaquilla@mesquilla.com#subjectAppend",
+      id: "filtaquilla@mesquilla.com.esr115#subjectAppend",
       name: util.getBundleString("fq.subjectprepend"),
 
       applyAction: function(aMsgHdrs, aActionValue, aListener, aType, aMsgWindow)
@@ -204,7 +205,7 @@
     // Suffix to subject
     self.subjectSuffix =
     {
-      id: "filtaquilla@mesquilla.com#subjectSuffix",
+      id: "filtaquilla@mesquilla.com.esr115#subjectSuffix",
       name: util.getBundleString("fq.subjectappend"),
 
       applyAction: function(aMsgHdrs, aActionValue, aListener, aType, aMsgWindow)
@@ -234,10 +235,161 @@
       isAsync: false
     };
 
+    // --- PREPEND TO SUBJECT (IMAP) HOOK ---
+    self.updateImapServer =
+    {
+      id: "filtaquilla@mesquilla.com.esr115#updateImapServer",
+      name: util.getBundleString("fq.updateImapServer") || "Prepend to Subject (IMAP)",
+
+      applyAction: function(aMsgHdrs, aActionValue, aListener, aType, aMsgWindow) {
+        const mimeConvert = Cc["@mozilla.org/messenger/mimeconverter;1"].getService(Ci.nsIMimeConverter);
+        let activeTaskCounter = aMsgHdrs.length;
+
+        function safeNotifyCompletion() {
+          activeTaskCounter--;
+          if (activeTaskCounter === 0 && aListener) {
+            if (typeof aListener.OnStopCopy === "function") {
+              aListener.OnStopCopy(Cr.NS_OK);
+            }
+          }
+        }
+
+        for (let msgHdr of aMsgHdrs) {
+          try {
+            let folder = msgHdr.folder;
+            
+            if (!folder.URI.startsWith("imap://")) {
+              util.logDebug("[Prepend IMAP Skip] Non-IMAP message: " + folder.name);
+              safeNotifyCompletion();
+              continue;
+            }
+
+            let liveUpdatedSubject = mimeConvert.decodeMimeHeader(msgHdr.subject, null, false, true);
+            if (liveUpdatedSubject.startsWith(aActionValue)) {
+              util.logDebug("[Prepend IMAP Skip] Prevention loop caught existing prefix match.");
+              safeNotifyCompletion();
+              continue;
+            }
+
+            let combinedSubjectString = aActionValue + liveUpdatedSubject;
+
+            // 1. Establish clean temporary file paths on the local scratch disk
+            let tempDir = Services.dirsvc.get("TmpD", Ci.nsIFile);
+            let uniqueFile = tempDir.clone();
+            let uniqueUuid = crypto.randomUUID();
+            uniqueFile.append(uniqueUuid + ".eml");
+
+            // 2. Stream the original message source data from the disk directly to a temporary file
+            let msgSpec = folder.getUriForMsg(msgHdr);
+            let service = MailServices.messageServiceFromURI(msgSpec);
+            
+            service.saveMessageToDisk(msgSpec, uniqueFile, false, {
+              OnStartRunningUrl: function(aUrl) {},
+              OnStopRunningUrl: function(aUrl, aStatus) {
+                try {
+                  // 3. Read the downloaded raw text block into memory
+                  let fileInputStream = Cc["@mozilla.org/network/file-input-stream;1"].createInstance(Ci.nsIFileInputStream);
+                  let scriptableStream = Cc["@mozilla.org/scriptableinputstream;1"].createInstance(Ci.nsIScriptableInputStream);
+                  
+                  fileInputStream.init(uniqueFile, 0x01, 0o444, 0);
+                  scriptableStream.init(fileInputStream);
+                  let rawMsgData = scriptableStream.read(scriptableStream.available());
+                  scriptableStream.close();
+                  fileInputStream.close();
+
+                  // 4. Update the subject header block manually inside the raw string data payload
+                  let sanitizedRaw = rawMsgData.replace(/\r/g, "").replace(/\n/g, "\r\n");
+                  let headerDelimiterIndex = sanitizedRaw.search(/\r\n\r\n/);
+                  let headerSectionBlock = "\r\n" + sanitizedRaw.substring(0, headerDelimiterIndex + 2).replace(/\r\r/g, "\r");
+                  let bodySectionBlock = sanitizedRaw.substring(headerDelimiterIndex + 2);
+
+                  while (headerSectionBlock.match(/\r\nSubject: .*\r\n\s+/)) {
+                    headerSectionBlock = headerSectionBlock.replace(/(\r\nSubject: .*)(\r\n\s+)/, "$1 ");
+                  }
+
+                  let rfc2047SubjectLine = "Subject: " + mimeConvert.encodeMimePartIIStr_UTF8(combinedSubjectString, false, "UTF-8", 0, 72);
+
+                  if (headerSectionBlock.includes("\nSubject: ")) {
+                    headerSectionBlock = headerSectionBlock.replace(/\nSubject: .*\r\n/, "\n" + rfc2047SubjectLine + "\r\n");
+                  } else {
+                    headerSectionBlock += rfc2047SubjectLine + "\r\n";
+                  }
+
+                  // 5. Rewrite the Message-ID field to a completely fresh value
+                  // This breaks the history link, stopping the circular filter re-evaluation loop bug entirely
+                  let replacementMsgId = crypto.randomUUID() + "@" + msgHdr.messageId.split("@").pop().replace(/>/g, "");
+                  headerSectionBlock = headerSectionBlock.replace(/\nMessage-ID: *.*\r\n/i, "\nMessage-ID: <" + replacementMsgId + ">\r\n");
+                  headerSectionBlock = headerSectionBlock.substring(2);
+
+                  // 6. Save the newly compiled data array payload back onto the disk
+                  let modernAssembledPayload = headerSectionBlock + bodySectionBlock;
+                  let fileOutputStream = Cc["@mozilla.org/network/file-output-stream;1"].createInstance(Ci.nsIFileOutputStream);
+                  
+                  fileOutputStream.init(uniqueFile, 0x02 | 0x08 | 0x20, 0o666, 0);
+                  fileOutputStream.write(modernAssembledPayload, modernAssembledPayload.length);
+                  fileOutputStream.close();
+
+                  // 7. Extract undisturbed snapshot database flags directly from the DB summary index
+                  let permanentDatabaseFlags = msgHdr.flags;
+                  if (folder.msgDatabase) {
+                    try {
+                      let dbHdrSnapshot = folder.msgDatabase.getMsgHdrForKey(msgHdr.messageKey);
+                      if (dbHdrSnapshot) {
+                        permanentDatabaseFlags = dbHdrSnapshot.flags;
+                      }
+                    } catch(e) {}
+                  }
+
+                  // 8. Stream the file up using copyFileMessage passing the real C++ object pointer and target database flags
+                  // By pairing the original msgHdr with the permanentDatabaseFlags, the historic date and true read/unread status lock down perfectly
+                  let imapFolder = folder.QueryInterface(Ci.nsIMsgImapMailFolder);
+                  MailServices.copy.copyFileMessage(uniqueFile, imapFolder, msgHdr, false, permanentDatabaseFlags, msgHdr.getStringProperty("keywords"), {
+                    OnStartRunningUrl: function(aUrl) {},
+                    OnStopRunningUrl: function(aUrl, aStatus) {
+                      try {
+                        try { uniqueFile.remove(false); } catch(e) {}
+                        Services.console.logStringMessage("[Prepend to Subject (IMAP)] Upload complete. Baseline verified.");
+                      } catch (innerError) {
+                        Services.console.logStringMessage("[Prepend to Subject (IMAP) Callback Failure] " + innerError);
+                      } finally {
+                        safeNotifyCompletion();
+                      }
+                    }
+                  }, null);
+
+                } catch (innerError) {
+                  Services.console.logStringMessage("[Prepend to Subject (IMAP) Stream Crash] File parse failure: " + innerError);
+                  safeNotifyCompletion();
+                }
+              }
+            }, true, null);
+
+          } catch (error) {
+            Services.console.logStringMessage("[Prepend to Subject (IMAP) Crash] " + error);
+            safeNotifyCompletion();
+          }
+        }
+      },
+
+      apply: function(aMsgHdrs, aActionValue, aListener, aType, aMsgWindow) {
+        let msgHdrs = [];
+        for (var i = 0; i < aMsgHdrs.length; i++) {
+          msgHdrs.push(aMsgHdrs.queryElementAt(i, Ci.nsIMsgDBHdr));
+        }
+        this.applyAction(msgHdrs, aActionValue, aListener, aType, aMsgWindow);
+      },
+
+      isValidForType: function(type, scope) { return updateImapServerEnabled; }, 
+      validateActionValue: function(value, folder, type) { return null; },
+      allowDuplicates: false,
+      needsBody: true, 
+      isAsync: true 
+    };
+
     // remove keyword
     self.removeKeyword =
     {
-      id: "filtaquilla@mesquilla.com#removeTag",
+      id: "filtaquilla@mesquilla.com.esr115#removeTag",
       name: util.getBundleString("fq.removekeyword"),
       applyAction: function(aMsgHdrs, aActionValue, aListener, aType, aMsgWindow) {
         aMsgHdrs[0].folder.removeKeywordsFromMessages(aMsgHdrs, aActionValue);
@@ -261,7 +413,7 @@
     // remove star
     self.removeFlagged =
     {
-      id: "filtaquilla@mesquilla.com#removeStar",
+      id: "filtaquilla@mesquilla.com.esr115#removeStar",
       name: util.getBundleString("fq.removeflagged"),
       applyAction: function(aMsgHdrs, aActionValue, aListener, aType, aMsgWindow) {
         aMsgHdrs[0].folder.markMessagesFlagged(aMsgHdrs, false);
@@ -282,7 +434,7 @@
     // mark as unread
     self.markUnread =
     {
-      id: "filtaquilla@mesquilla.com#markUnread",
+      id: "filtaquilla@mesquilla.com.esr115#markUnread",
       name: util.getBundleString("fq.markUnread"),
       applyAction: function(aMsgHdrs, aActionValue, aListener, aType, aMsgWindow) {
         aMsgHdrs[0].folder.markMessagesRead(aMsgHdrs, false);
@@ -302,7 +454,7 @@
     // mark as replied
     self.markReplied =
     {
-      id: "filtaquilla@mesquilla.com#markReplied",
+      id: "filtaquilla@mesquilla.com.esr115#markReplied",
       name: util.getBundleString("fq.markReplied"),
       applyAction: function(aMsgHdrs, aActionValue, aListener, aType, aMsgWindow) {
         // what a pain, the folder function does not take an array like all others!
@@ -326,7 +478,7 @@
     // noBiff action
     self.noBiff =
     {
-      id: "filtaquilla@mesquilla.com#noBiff",
+      id: "filtaquilla@mesquilla.com.esr115#noBiff",
       name: util.getBundleString("fq.nobiff"),
       applyAction: function(aMsgHdrs, aActionValue, aListener, aType, aMsgWindow) {
         let folder = aMsgHdrs[0].folder,
@@ -353,7 +505,7 @@
     {
       self.copyAsRead =
       {
-        id: "filtaquilla@mesquilla.com#copyAsRead",
+        id: "filtaquilla@mesquilla.com.esr115#copyAsRead",
         name: util.getBundleString("fq.copyAsRead"),
         applyAction: function(aMsgHdrs, aActionValue, aListener, aType, aMsgWindow) {
           _aListener = aListener;
@@ -477,7 +629,7 @@
     // launch file
     self.launchFile =
     {
-      id: "filtaquilla@mesquilla.com#launchFile",
+      id: "filtaquilla@mesquilla.com.esr115#launchFile",
       name: util.getBundleString("fq.launchFile"),
       applyAction: function(aMsgHdrs, aActionValue, aListener, aType, aMsgWindow)
       {
@@ -504,7 +656,7 @@
     // run file
     self.runFile =
     {
-      id: "filtaquilla@mesquilla.com#runFile",
+      id: "filtaquilla@mesquilla.com.esr115#runFile",
       name: util.getBundleString("fq.runFile"),
       applyAction: function(aMsgHdrs, aActionValue, aListener, aType, aMsgWindow) {
         var file = Cc["@mozilla.org/file/local;1"]
@@ -602,7 +754,7 @@
     
     self.fwdSmartTemplates =
     {
-      id: "filtaquilla@mesquilla.com#fwdSmart",
+      id: "filtaquilla@mesquilla.com.esr115#fwdSmart",
       name: util.getBundleString("fq.smartTemplate.fwd"),
       applyAction: function(aMsgHdrs, aActionValue, aListener, aType, aMsgWindow) {
         var file = Cc["@mozilla.org/file/local;1"]
@@ -655,7 +807,7 @@
 
     self.replySmartTemplates =
     {
-      id: "filtaquilla@mesquilla.com#rspSmart",
+      id: "filtaquilla@mesquilla.com.esr115#rspSmart",
       name: util.getBundleString("fq.smartTemplate.rsp"),
       applyAction: function(aMsgHdrs, aActionValue, aListener, aType, aMsgWindow) {
         var file = Cc["@mozilla.org/file/local;1"]
@@ -699,7 +851,7 @@
     // train as junk
     self.trainAsJunk =
     {
-      id: "filtaquilla@mesquilla.com#trainAsJunk",
+      id: "filtaquilla@mesquilla.com.esr115#trainAsJunk",
       name: util.getBundleString("fq.trainJunk"),
       applyAction: function(aMsgHdrs, aActionValue, aListener, aType, aMsgWindow) {
         _trainJunkFilter(true, aMsgHdrs, aMsgWindow);
@@ -721,7 +873,7 @@
     // train as good
     self.trainAsGood =
     {
-      id: "filtaquilla@mesquilla.com#trainAsGood",
+      id: "filtaquilla@mesquilla.com.esr115#trainAsGood",
       name: util.getBundleString("fq.trainGood"),
       applyAction: function(aMsgHdrs, aActionValue, aListener, aType, aMsgWindow) {
         _trainJunkFilter(false, aMsgHdrs, aMsgWindow);
@@ -743,7 +895,7 @@
     // print messages
     self.print =
     {
-      id: "filtaquilla@mesquilla.com#print",
+      id: "filtaquilla@mesquilla.com.esr115#print",
       name: util.getBundleString("fq.print"),
       applyAction: function(aMsgHdrs, aActionValue, aListener, aType, aMsgWindow) {
         // print me
@@ -880,7 +1032,7 @@
     // add sender to a specific address book
     self.addSender =
     {
-      id: "filtaquilla@mesquilla.com#addSender",
+      id: "filtaquilla@mesquilla.com.esr115#addSender",
       name: util.getBundleString("fq.addSender"),
       applyAction: function(aMsgHdrs, aActionValue, aListener, aType, aMsgWindow) {
         
@@ -952,7 +1104,7 @@
 
     self.saveAttachment =
     {
-      id: "filtaquilla@mesquilla.com#saveAttachment",
+      id: "filtaquilla@mesquilla.com.esr115#saveAttachment",
       name: util.getBundleString("fq.saveAttachment"),
       applyAction: function(aMsgHdrs, aActionValue, aListener, aType, aMsgWindow)
       {
@@ -1091,7 +1243,7 @@
 
     self.detachAttachments =
     {
-      id: "filtaquilla@mesquilla.com#detachAttachments",
+      id: "filtaquilla@mesquilla.com.esr115#detachAttachments",
       name: util.getBundleString("fq.detachAttachments"),
       applyAction: function(aMsgHdrs, aActionValue, aListener, aType, aMsgWindow)
       {
@@ -1136,7 +1288,7 @@
 
     self.javascriptAction =
     {
-      id: "filtaquilla@mesquilla.com#javascriptAction",
+      id: "filtaquilla@mesquilla.com.esr115#javascriptAction",
       name: util.getBundleString("filtaquilla.javascriptAction.name"),
       applyAction: function(msgHdrs, actionValue, copyListener, filterType, msgWindow) {
 		    try {
@@ -1166,7 +1318,7 @@
 
     self.javascriptActionBody =
     {
-      id: "filtaquilla@mesquilla.com#javascriptActionBody",
+      id: "filtaquilla@mesquilla.com.esr115#javascriptActionBody",
       name: util.getBundleString("filtaquilla.javascriptActionBody.name"),
       applyAction: function(msgHdrs, actionValue, copyListener, filterType, msgWindow) {
 		    try {
@@ -1195,7 +1347,7 @@
 
     self.saveMessageAsFile =
     {
-      id: "filtaquilla@mesquilla.com#saveMessageAsFile",
+      id: "filtaquilla@mesquilla.com.esr115#saveMessageAsFile",
       name: util.getBundleString("fq.saveMsgAsFile"),
       applyAction: function(msgHdrs, actionValue, copyListener, filterType, msgWindow) {
         // allow specifying directory with suffix of |htm
@@ -1232,7 +1384,7 @@
 
     self.moveLater =
     {
-      id: "filtaquilla@mesquilla.com#moveLater",
+      id: "filtaquilla@mesquilla.com.esr115#moveLater",
       name: util.getBundleString("fq.moveLater"),
       applyAction: function(aMsgHdrs, aActionValue, copyListener, filterType, msgWindow) {
         let srcFolder = aMsgHdrs[0].folder;
@@ -1264,7 +1416,7 @@
 	  // archiveMessage [issue 126] 
     self.archiveMessage =
     {
-      id: "filtaquilla@mesquilla.com#archiveMessage",
+      id: "filtaquilla@mesquilla.com.esr115#archiveMessage",
       name: util.getBundleString("fq.archiveMessage"),
       applyAction: function(aMsgHdrs, aActionValue, aListener, aType, aMsgWindow) {
         let archiver = new MessageArchiver(); // [issue 241]
@@ -1289,7 +1441,7 @@
     // search of folder name
     self.folderName =
     {
-      id: "filtaquilla@mesquilla.com#folderName",
+      id: "filtaquilla@mesquilla.com.esr115#folderName",
       name: util.getBundleString("fq.folderName"),
       getEnabled: function folderName_getEnabled(scope, op) {
         return _isLocalSearch(scope);
@@ -1345,7 +1497,7 @@
     // search of BCC field
     self.searchBcc =
     {
-      id: "filtaquilla@mesquilla.com#searchBcc",
+      id: "filtaquilla@mesquilla.com.esr115#searchBcc",
       name: util.getBundleString("fq.Bcc"),
       getEnabled: function searchBcc_getEnabled(scope, op) {
         return _isLocalSearch(scope);
@@ -1445,7 +1597,7 @@
     // search subject with regular expression
     self.subjectRegex =
     {
-      id: "filtaquilla@mesquilla.com#subjectRegex",
+      id: "filtaquilla@mesquilla.com.esr115#subjectRegex",
       name: util.getBundleString("fq.subjectRegex"),
       getEnabled: function subjectRegEx_getEnabled(scope, op) {
         return _isLocalSearch(scope);
@@ -1555,7 +1707,7 @@
 		// search attachment names with regular expression
 		self.attachmentRegex =
 		{
-      id: "filtaquilla@mesquilla.com#attachmentRegex",
+      id: "filtaquilla@mesquilla.com.esr115#attachmentRegex",
       name: util.getBundleString("fq.attachmentRegex"),
       getEnabled: function attachRegEx_getEnabled(scope, op) {
         return _isLocalSearch(scope);
@@ -1614,7 +1766,7 @@
 
     self.headerRegex =
     {
-      id: "filtaquilla@mesquilla.com#headerRegex",
+      id: "filtaquilla@mesquilla.com.esr115#headerRegex",
       name: util.getBundleString("fq.hdrRegex"),
       getEnabled: function headerRegEx_getEnabled(scope, op) {
         return _isLocalSearch(scope);
@@ -1691,7 +1843,7 @@
     
     self.bodyRegex =
     {
-      id: "filtaquilla@mesquilla.com#bodyRegex",
+      id: "filtaquilla@mesquilla.com.esr115#bodyRegex",
       name: util.getBundleString("fq.bodyRegex"),
       getEnabled: function bodyRegEx_getEnabled(scope, op) {
         return _isLocalSearch(scope);
@@ -1739,7 +1891,7 @@
     
     self.subjectBodyRegex =
     {
-      id: "filtaquilla@mesquilla.com#subjectBodyRegex",
+      id: "filtaquilla@mesquilla.com.esr115#subjectBodyRegex",
       name: util.getBundleString("fq.subjectBodyRegex"),
       getEnabled: function subjectBodyRegex_getEnabled(scope, op) {
         return _isLocalSearch(scope);
@@ -1791,7 +1943,7 @@
     // search using arbitrary javascript
     self.javascript =
     {
-      id: "filtaquilla@mesquilla.com#javascript",
+      id: "filtaquilla@mesquilla.com.esr115#javascript",
       name: util.getBundleString("fq.javascript"),
       getEnabled: function javascript_getEnabled(scope, op) {
         return true;
@@ -1818,7 +1970,7 @@
 
     self.threadHeadTag =
     {
-      id: "filtaquilla@mesquilla.com#threadheadtag",
+      id: "filtaquilla@mesquilla.com.esr115#threadheadtag",
       name: util.getBundleString("fq.threadHeadTag"),
       getEnabled: function threadHeadTag_getEnabled(scope, op) {
         return true;
@@ -1880,7 +2032,7 @@
 
     self.threadAnyTag =
     {
-      id: "filtaquilla@mesquilla.com#threadanytag",
+      id: "filtaquilla@mesquilla.com.esr115#threadanytag",
       name: util.getBundleString("fq.threadAnyTag"),
       getEnabled: function threadAnyTag_getEnabled(scope, op) {
         return true;
@@ -2116,7 +2268,11 @@
     try {
       rspSmartTemplatesEnabled = prefs.getBoolPref("smarttemplates.rsp.enabled");
     } catch (e) {}
-    
+
+    try {
+      updateImapServerEnabled = prefs.getBoolPref("updateImapServer.enabled");
+    } catch (e) {}
+
     // 2. Enable conditions
     try {
       SubjectRegexEnabled = prefs.getBoolPref("SubjectRegexEnabled");
@@ -2187,7 +2343,7 @@
     filterService.addCustomAction(self.trainAsGood);
     filterService.addCustomAction(self.print);
     // [issue 153]
-    // test: filterService.getCustomAction("filtaquilla@mesquilla.com#fwdSmart")
+    // test: filterService.getCustomAction("filtaquilla@mesquilla.com.esr115#fwdSmart")
     filterService.addCustomAction(self.fwdSmartTemplates);
     filterService.addCustomAction(self.replySmartTemplates);
     filterService.addCustomAction(self.addSender);
@@ -2199,7 +2355,7 @@
     filterService.addCustomAction(self.moveLater);
     filterService.addCustomAction(self.playSound);
     filterService.addCustomAction(self.archiveMessage);
-    filterService.addCustomAction(self.trainAsJunk);
+    filterService.addCustomAction(self.updateImapServer);
 
 
     // search terms 

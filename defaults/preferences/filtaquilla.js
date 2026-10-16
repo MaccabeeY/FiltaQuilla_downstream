@@ -1,9 +1,10 @@
 // See http://kb.mozillazine.org/Localize_extension_descriptions
-pref("extensions.filtaquilla@mesquilla.com.description", "chrome://filtaquilla/locale/filtaquilla.properties");
+pref("extensions.filtaquilla@mesquilla.com.esr115.description", "chrome://filtaquilla/locale/filtaquilla.properties");
 // the maximum number of items to scan in a thread search
 pref("extensions.filtaquilla.maxthreadscan", 20);
 // filter actions
 pref("extensions.filtaquilla.subjectAppend.enabled", false);
+pref("extensions.filtaquilla.updateImapServer.enabled", false);
 pref("extensions.filtaquilla.subjectSuffix.enabled", false);
 pref("extensions.filtaquilla.removeKeyword.enabled", false);
 pref("extensions.filtaquilla.removeFlagged.enabled", false);

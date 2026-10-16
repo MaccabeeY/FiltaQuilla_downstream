@@ -1,5 +1,5 @@
 // Set this to the ID of your add-on, or call notifyTools.setAddonID().
-var ADDON_ID = "filtaquilla@mesquilla.com";
+var ADDON_ID = "filtaquilla@mesquilla.com.esr115";
 
 /*
  * This file is provided by the addon-developer-support repository at

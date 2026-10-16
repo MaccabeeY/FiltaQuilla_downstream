@@ -1,8 +1,8 @@
 ﻿{
   "manifest_version" : 2,
-  "name" : "FiltaQuilla",
+  "name" : "FiltaQuilla ESR115",
   "description" : "Mail filter custom actions and searches",
-  "version" : "4.3.1",
+  "version" : "4.3.1.1",
   "default_locale": "en",
   "author" : "R Kent James,Axel Grude",
   "developer" : {
@@ -11,7 +11,7 @@
   },
   "applications" : {
       "gecko" : {
-          "id" : "filtaquilla@mesquilla.com",
+          "id" : "filtaquilla@mesquilla.com.esr115",
           "strict_min_version" : "112.0",
           "strict_max_version" : "133.*"
       }

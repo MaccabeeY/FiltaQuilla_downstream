@@ -39,6 +39,7 @@
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         xmlns:html="http://www.w3.org/1999/xhtml"
         title="__MSG_prefwindow.title__"
+        style="height: 480px;"
         >
         
   <script type="application/javascript" src="chrome://filtaquilla/content/options.js"/>
@@ -79,7 +80,8 @@
       <preference id="archiveMessage" name="extensions.filtaquilla.archiveMessage.enabled" type="bool"/>
       <preference id="fwdSmartTemplatesEnabled" name="extensions.filtaquilla.smarttemplates.fwd.enabled" type="bool"/>
       <preference id="rspSmartTemplatesEnabled" name="extensions.filtaquilla.smarttemplates.rsp.enabled" type="bool"/>
-      
+      <preference id="updateImapServerEnabledPref" name="extensions.filtaquilla.updateImapServer.enabled" type="bool"/>
+
 
       <preference id="saveMessageAsFileEnabled" name="extensions.filtaquilla.saveMessageAsFile.enabled" type="bool"/>
       <preference id="moveLaterEnabled" name="extensions.filtaquilla.moveLater.enabled" type="bool"/>
@@ -138,6 +140,15 @@
             </span>
 
             <span>
+              <checkbox id="checkUpdateImapServerEnabled" preference="updateImapServerEnabledPref"
+                        label="__MSG_fq.updateImapServer__"/>
+              <toolbarbutton
+                  class="helpLink"
+                  onclick="FiltaQuilla.Util.openHelpTab('prepend_subject');"
+                  tooltiptext="__MSG_helpFeatureTip__"/>
+            </span>
+
+            <span>
               <checkbox id="checkCopyAsReadEnabled" preference="copyAsReadEnabled"
                         label="__MSG_fq.copyAsRead__"
                         accesskey="__MSG_fq.copyAsRead.access__"/>
@@ -164,7 +175,7 @@
                   tooltiptext="__MSG_helpFeatureTip__"
                   />
             </span>                      
-                      
+
             <span>
               <checkbox id="checkLaunchFileEnabled" preference="launchFileEnabled"
                         label="__MSG_fq.launchFile__"
