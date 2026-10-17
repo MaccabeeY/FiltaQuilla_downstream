@@ -179,8 +179,11 @@
       {
         for (let msgHdr of aMsgHdrs)
         {
-          var appSubject = _mimeAppend(aActionValue, msgHdr.subject, true);
-          msgHdr.subject = appSubject;
+          let processedSubjectPayload = FiltaQuilla.Util.modifyMimeHeaderString(msgHdr.subject, aActionValue, "prepend");
+          
+          if (processedSubjectPayload !== null) {
+            msgHdr.subject = processedSubjectPayload;
+          }
         }
       },
       
@@ -212,11 +215,13 @@
       {
         for (let msgHdr of aMsgHdrs)
         {
-          var appSubject = _mimeAppend(aActionValue, msgHdr.subject, false);
-          msgHdr.subject = appSubject;
+          let processedSubjectPayload = FiltaQuilla.Util.modifyMimeHeaderString(msgHdr.subject, aActionValue, "append");
+          if (processedSubjectPayload !== null) {
+            msgHdr.subject = processedSubjectPayload;
+          }
         }
       },
-      
+
       apply: function(aMsgHdrs, aActionValue, aListener, aType, aMsgWindow)
       {
         let msgHdrs = [];
@@ -264,15 +269,6 @@
               continue;
             }
 
-            let liveUpdatedSubject = mimeConvert.decodeMimeHeader(msgHdr.subject, null, false, true);
-            if (liveUpdatedSubject.startsWith(aActionValue)) {
-              util.logDebug("[Prepend IMAP Skip] Prevention loop caught existing prefix match.");
-              safeNotifyCompletion();
-              continue;
-            }
-
-            let combinedSubjectString = aActionValue + liveUpdatedSubject;
-
             // 1. Establish clean temporary file paths on the local scratch disk
             let tempDir = Services.dirsvc.get("TmpD", Ci.nsIFile);
             let uniqueFile = tempDir.clone();
@@ -282,7 +278,7 @@
             // 2. Stream the original message source data from the disk directly to a temporary file
             let msgSpec = folder.getUriForMsg(msgHdr);
             let service = MailServices.messageServiceFromURI(msgSpec);
-            
+
             service.saveMessageToDisk(msgSpec, uniqueFile, false, {
               OnStartRunningUrl: function(aUrl) {},
               OnStopRunningUrl: function(aUrl, aStatus) {
@@ -290,7 +286,7 @@
                   // 3. Read the downloaded raw text block into memory
                   let fileInputStream = Cc["@mozilla.org/network/file-input-stream;1"].createInstance(Ci.nsIFileInputStream);
                   let scriptableStream = Cc["@mozilla.org/scriptableinputstream;1"].createInstance(Ci.nsIScriptableInputStream);
-                  
+
                   fileInputStream.init(uniqueFile, 0x01, 0o444, 0);
                   scriptableStream.init(fileInputStream);
                   let rawMsgData = scriptableStream.read(scriptableStream.available());
@@ -307,7 +303,20 @@
                     headerSectionBlock = headerSectionBlock.replace(/(\r\nSubject: .*)(\r\n\s+)/, "$1 ");
                   }
 
-                  let rfc2047SubjectLine = "Subject: " + mimeConvert.encodeMimePartIIStr_UTF8(combinedSubjectString, false, "UTF-8", 0, 72);
+                  let subjectMatch = headerSectionBlock.match(/\r\nSubject: (.*)\r\n/i);
+                  let originalRawSubject = subjectMatch ? subjectMatch[1].trim() : "";
+
+                  // Leverage the modern centralized split engine utility for text extraction processing passes
+                  let processedSubjectPayload = FiltaQuilla.Util.modifyMimeHeaderString(originalRawSubject, aActionValue, "prepend");
+                  
+                  if (processedSubjectPayload === null) {
+                    util.logDebug("[Prepend IMAP Skip] Prevention loop caught existing prefix match.");
+                    try { uniqueFile.remove(false); } catch(e) {}
+                    safeNotifyCompletion();
+                    return;
+                  }
+
+                  let rfc2047SubjectLine = "Subject: " + processedSubjectPayload;
 
                   if (headerSectionBlock.includes("\nSubject: ")) {
                     headerSectionBlock = headerSectionBlock.replace(/\nSubject: .*\r\n/, "\n" + rfc2047SubjectLine + "\r\n");
@@ -324,7 +333,7 @@
                   // 6. Save the newly compiled data array payload back onto the disk
                   let modernAssembledPayload = headerSectionBlock + bodySectionBlock;
                   let fileOutputStream = Cc["@mozilla.org/network/file-output-stream;1"].createInstance(Ci.nsIFileOutputStream);
-                  
+
                   fileOutputStream.init(uniqueFile, 0x02 | 0x08 | 0x20, 0o666, 0);
                   fileOutputStream.write(modernAssembledPayload, modernAssembledPayload.length);
                   fileOutputStream.close();

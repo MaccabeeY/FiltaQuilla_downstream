@@ -1109,6 +1109,28 @@ FiltaQuilla.Util = {
     return win;
   },
 
+  modifyMimeHeaderString: function(originalValue, aActionValue, position) {
+    if (!originalValue) {
+      originalValue = "";
+    }
+    const mimeConvert = Cc["@mozilla.org/messenger/mimeconverter;1"].getService(Ci.nsIMimeConverter);
+    
+    if (originalValue.startsWith("=?") || originalValue.includes("=?")) {
+      let decodedOriginal = mimeConvert.decodeMimeHeader(originalValue, null, false, true);
+      
+      if (position === "prepend" && decodedOriginal.startsWith(aActionValue)) return null;
+      if (position === "append" && decodedOriginal.endsWith(aActionValue)) return null;
+      
+      let standardCombined = (position === "prepend") ? (aActionValue + decodedOriginal) : (decodedOriginal + aActionValue);
+      return mimeConvert.encodeMimePartIIStr_UTF8(standardCombined, false, "UTF-8", 0, 72);
+    } else {
+      if (position === "prepend" && originalValue.startsWith(aActionValue)) return null;
+      if (position === "append" && originalValue.endsWith(aActionValue)) return null;
+      
+      return (position === "prepend") ? (aActionValue + originalValue) : (originalValue + aActionValue);
+    }
+  },
+
   redirectRegex101({ expression = null, flags = "", exampleId = "MfQBZT" }) {
     let encodedRegex = "";
     const flagParam = flags ? `&flags=${flags}` : "";
